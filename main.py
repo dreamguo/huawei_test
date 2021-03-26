@@ -2,7 +2,7 @@
 # -*- coding:utf-8 -*-
 import sys
 import numpy as np
-# import line_profiler
+import line_profiler
 
 server_dict = {}
 vm_dict = {}
@@ -19,9 +19,8 @@ class Server:
         self.id = id
 
     def display(self):
-        print("{}:{}, purchase_cost:{} daliy_cost:{}".format(
-                self.id, self.name, self.purchase_cost, self.daliy_cost))
-        print("         A_CPU:{}      A_memory:{}      B_CPU:{}      B_memory:{}".format(
+        print("{}:{}, purchase_cost:{} daliy_cost:{} A_CPU:{} A_memory:{} B_CPU:{} B_memory:{}".format(
+                self.id, self.name, self.purchase_cost, self.daliy_cost, \
                 self.A_CPU, self.A_memory, self.B_CPU, self.B_memory))
 
     def total_cost(self, left_day):
@@ -79,11 +78,10 @@ class VirtualMachine:
 
 
 def try_load(server_list, vm_list, test=True, display=False):
-    # TODO{sort vms by CPU num and memory size? And double-note first?}
     if len(server_list) == 0:
         return vm_list
     left_vms = []
-    not_enough = 10
+    no_space = 1
     if test:
         assert isinstance(server_list, tuple)
         A_CPU = int(int(server_list[1]) / 2)
@@ -92,7 +90,7 @@ def try_load(server_list, vm_list, test=True, display=False):
         B_memory = A_memory
         left_vms = vm_list.copy()
         for vm_item in vm_list:
-            if (A_CPU < not_enough or A_memory < not_enough) and (B_CPU < not_enough or B_memory < not_enough):
+            if (A_CPU < no_space or A_memory < no_space) and (B_CPU < no_space or B_memory < no_space):
                 break
             if vm_item.double_note:
                 if display:
@@ -119,8 +117,8 @@ def try_load(server_list, vm_list, test=True, display=False):
     else:
         tmp_server_list = []
         for server in server_list:
-            if (server.A_CPU >= not_enough and server.A_memory >= not_enough) or (
-                    server.B_CPU >= not_enough and server.B_memory >= not_enough):
+            if (server.A_CPU >= no_space and server.A_memory >= no_space) or (
+                    server.B_CPU >= no_space and server.B_memory >= no_space):
                 tmp_server_list.append(server)
         if display:
             print(len(tmp_server_list))
@@ -146,8 +144,8 @@ def try_load(server_list, vm_list, test=True, display=False):
                             server_item.load(vm_item, "B")
                             flag = 0
                             break
-                if (server_item.A_CPU < not_enough or server_item.A_memory < not_enough) and \
-                        (server_item.B_CPU < not_enough or server_item.B_memory < not_enough):
+                if (server_item.A_CPU < no_space or server_item.A_memory < no_space) and \
+                        (server_item.B_CPU < no_space or server_item.B_memory < no_space):
                     rm_list.append(server_item)
             for item in rm_list:
                 tmp_server_list.remove(item)
@@ -159,17 +157,36 @@ def try_load(server_list, vm_list, test=True, display=False):
 def big_server_first(server_name_list):
     def take_memory(elem):
         return server_dict[elem][2]
+
     # big first
     server_name_list.sort(reverse=True, key=take_memory)
-    return server_name_list
+
+
+def big_or_double_vm_first(vm_list):
+    def take_memory(elem):
+        return elem.memory
+
+    #sort_vm_list = vm_list.copy()
+    # big first
+    #sort_vm_list.sort(reverse=True, key=take_memory)
+    # double first
+    double_list = []
+    single_list = []
+    for vm in vm_list:
+        if vm.double_note:
+            double_list.append(vm)
+        else:
+            single_list.append(vm)
+    double_list.extend(single_list)
+    return double_list
 
 
 def main():
     file_input = True
     debug = False
     # --------------------------------------------------Basic Info--------------------------------------------------- #
-    f = open("training-2.txt", "r")
     if file_input:
+        f = open("training-1.txt", "r")
         server_num = int(f.readline())
     else:
         server_num = int(sys.stdin.readline())
@@ -183,7 +200,7 @@ def main():
         server_name_list.append(server_info[0])
         server_dict[server_info[0]] = (server_info[0], server_info[1], server_info[2], server_info[3],
                                        server_info[4])
-    server_name_list = big_server_first(server_name_list)
+    # big_server_first(server_name_list)
     # print(server_dict)
     if file_input:
         vm_num = int(f.readline())
@@ -207,6 +224,10 @@ def main():
     output = ''
     all_cost = 0
     for day_idx in range(day_num):
+        if day_idx == 6:
+            debug = False
+        if day_idx == 7:
+            debug = False
         if debug:
             print("day_idx:", day_idx)
         left_day = day_num - day_idx
@@ -235,14 +256,13 @@ def main():
             if debug:
                 print(vm_run_dict)
     # ----------------------------------------------Dynamic programming----------------------------------------------- #
+        # init_left_vms = big_or_double_vm_first(vm_new_list)
         init_left_vms = try_load(server_run_list, vm_new_list, test=False)
         best_cost = 99999999999
         best_match = []
         if len(init_left_vms) > 0:
             state_table = np.zeros((server_num, len(init_left_vms)), dtype=np.int).tolist()
-            # state_table = [[0 for i in range(10 ** 5)] for j in range(server_num)]
             for server_i in range(server_num):
-                # purchase_i is start from 0, mention that we need add 1 when compute it.
                 for purchase_i in range(0, len(init_left_vms)):
                     if purchase_i == 0:
                         server_para = server_dict[server_name_list[server_i]]
@@ -261,14 +281,13 @@ def main():
                             last_server, last_vms, last_cost = state_table[server_i][purchase_i - 1]
                             server_para = server_dict[server_name_list[server_i]]
                             left_vms = try_load(server_para, last_vms)
-                            last_server.append(server_name_list[server_i])
+                            server_list = last_server.copy()
+                            server_list.append(server_name_list[server_i])
                             cost = int(server_para[3]) + int(server_para[4]) * left_day + last_cost
-                            state_table[server_i][purchase_i] = (last_server, left_vms, cost)
+                            state_table[server_i][purchase_i] = (server_list, left_vms, cost)
                             if len(left_vms) == 0 and cost < best_cost:
                                 best_match = state_table[server_i][purchase_i][0]
                                 best_cost = cost
-                                # print(server_i, ", ", purchase_i, ": ",
-                                #      state_table[server_i][purchase_i][0])
                                 break
                         else:
                             server_para = server_dict[server_name_list[server_i]]
@@ -280,7 +299,14 @@ def main():
                                     # last server one
                                     last_server_2, last_vms_2, last_cost_2 = state_table[server_i][purchase_i - 1]
                                     left_vms_2 = try_load(server_para, last_vms_2)
-                                    # judge which one is better TODO{many ways to define}
+                                    if debug:
+                                        if server_i == 11 and purchase_i == 1:
+                                            print(len(last_server_1))
+                                            for i in last_server_1:
+                                                print(i)
+                                            print(len(last_vms_1))
+                                            for i in last_vms_1:
+                                                i.display()
                                     if len(left_vms_1) <= len(left_vms_2):
                                         last_server = last_server_1
                                         left_vms = left_vms_1
@@ -293,15 +319,15 @@ def main():
                                     last_server, last_vms, last_cost = state_table[server_i][purchase_i - 1]
                             else:
                                 last_server, last_vms, last_cost = state_table[server_i][purchase_i - 1]
-                            last_server.append(server_name_list[server_i])
+                            server_list = last_server.copy()
+                            server_list.append(server_name_list[server_i])
                             cost = int(server_para[3]) + int(server_para[4]) * left_day + last_cost
                             if cost > best_cost:
-                                if state_table[server_i - 1][purchase_i] != 0:
-                                    _, _, last_cost = state_table[server_i - 1][purchase_i]
-                                    assert int(server_para[3]) + int(server_para[4]) * left_day + last_cost
                                 state_table[server_i][purchase_i] = ([], [], 0)
-                                break
-                            state_table[server_i][purchase_i] = (last_server, left_vms, cost)
+                                if state_table[server_i - 1][purchase_i] == 0 or \
+                                        len(state_table[server_i - 1][purchase_i][0]) == 0:
+                                    break
+                            state_table[server_i][purchase_i] = (server_list, left_vms, cost)
                             if len(left_vms) == 0 and cost < best_cost:
                                 best_match = state_table[server_i][purchase_i][0]
                                 best_cost = cost
@@ -318,15 +344,13 @@ def main():
                 server_new_list.append(server)
             left_vms = try_load(server_new_list, init_left_vms, test=False, display=debug)
             if debug:
-                print("----------------------------")
                 print(len(init_left_vms))
-                for i in init_left_vms:
-                    print(i.display())
                 print(len(left_vms))
-                for i in left_vms:
-                    print(i.display())
+                print(len(server_new_list))
                 for i in server_new_list:
-                    print(i.display())
+                    i.display()
+                for i in init_left_vms:
+                    i.display()
             assert len(left_vms) == 0
         for del_vm in del_vm_list:
             vm = vm_run_dict.pop(del_vm)
@@ -355,8 +379,8 @@ def main():
 
 if __name__ == '__main__':
 
-    # profile = line_profiler.LineProfiler(main)
-    # profile.enable()  # 开始分析
+    profile = line_profiler.LineProfiler(main)
+    profile.enable()  # 开始分析
     main()
-    # profile.disable()  # 停止分析
-    # profile.print_stats()  # 打印出性能分析结果
+    profile.disable()  # 停止分析
+    profile.print_stats()  # 打印出性能分析结果
